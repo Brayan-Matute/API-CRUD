@@ -88,6 +88,49 @@ def add_user():
     finally:
         connection.close()
 
+        # GET: Obtener un empleado por ID
+@empleado_bp.route('/empleados/<int:idEmpleados>', methods=['GET'])
+def get_user_by_id(idEmpleados):
+    try:
+        connection = get_db_connection()
+        if connection and connection.is_connected():
+            cursor = connection.cursor(dictionary=True)
+
+            # Consulta SQL para buscar un empleado por su ID
+            query = """
+                SELECT 
+                    e.idEmpleados,
+                    e.nombre,
+                    e.apellido,
+                    e.fecha_nac,
+                    e.ciudad,
+                    e.direccion,
+                    e.telefono,
+                    d.nombre AS departamento,
+                    CONCAT(s.nombre, ' ', s.apellidos) AS supervisor,
+                    e.salario,
+                    e.foto
+                FROM tb_empleados e
+                LEFT JOIN departamento d ON e.idDepartamento = d.idDepartamento
+                LEFT JOIN supervisor s ON e.idSupervisor = s.idSupervisor
+                WHERE e.idEmpleados = %s
+            """
+            cursor.execute(query, (idEmpleados,))
+            empleado = cursor.fetchone()
+
+            if empleado:
+                return jsonify(empleado), 200
+            else:
+                return jsonify({'error': f'Empleado con ID {idEmpleados} no encontrado'}), 404
+
+    except Exception as e:
+        return jsonify({'error': f'Error al obtener el empleado: {e}'}), 500
+
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+
 # DELETE: Eliminar un empleado
 @empleado_bp.route('/empleados/<int:idEmpleados>', methods=['DELETE'])
 def delete_user(idEmpleados):
@@ -118,51 +161,53 @@ def delete_user(idEmpleados):
         if connection and connection.is_connected():
             connection.close()
 
-# PUT: Actualizar datos de un empleado
 @empleado_bp.route('/empleados/<int:idEmpleados>', methods=['PUT'])
 def update_user(idEmpleados):
-    data = request.get_json()
-    required_fields = ['nombre', 'apellido', 'fecha_nac', 'ciudad', 'direccion', 'telefono', 'idDepartamento', 'salario', 'idSupervisor', 'foto']
-
-    # Verificar que los datos requeridos estén presentes
-    if not all(field in data and data[field] for field in required_fields):
-        return jsonify({'error': 'Faltan datos obligatorios'}), 400
-
-    foto_url = data['foto']  # Usamos la URL de la foto directamente
-
     try:
-        connection = get_db_connection()
-        if connection and connection.is_connected():
+        data = request.json
+        foto = request.files.get('foto')  # Obtener nueva imagen del formulario
+
+        if foto and allowed_file(foto.filename):
+            # Guardar nueva imagen
+            filename = secure_filename(foto.filename)
+            foto_path = os.path.join(UPLOAD_FOLDER, filename)
+            foto.save(foto_path)
+            foto_sql = foto_path  # Ruta de la nueva imagen
+        else:
+            # Mantener la foto actual si no se proporciona una nueva
+            connection = get_db_connection()
             cursor = connection.cursor(dictionary=True)
-            
-            # Verificar si el empleado existe
-            check_query = "SELECT * FROM tb_empleados WHERE idEmpleados = %s"
-            cursor.execute(check_query, (idEmpleados,))
+            query = "SELECT foto FROM tb_empleados WHERE idEmpleados = %s"
+            cursor.execute(query, (idEmpleados,))
             empleado = cursor.fetchone()
 
-            if not empleado:
-                return jsonify({'error': f'El empleado con id {idEmpleados} no existe'}), 404
+            if empleado:
+                foto_sql = empleado['foto']  # Mantener foto actual
+            else:
+                return jsonify({'error': 'Empleado no encontrado'}), 404
 
-            # Actualizar datos del empleado
-            update_query = """
-                UPDATE tb_empleados
-                SET nombre = %s, apellido = %s, fecha_nac = %s, ciudad = %s, direccion = %s,
-                    telefono = %s, idDepartamento = %s, salario = %s, idSupervisor = %s, foto = %s
-                WHERE idEmpleados = %s
-            """
-            values = (
-                data['nombre'], data['apellido'], data['fecha_nac'], data['ciudad'],
-                data['direccion'], data['telefono'], data['idDepartamento'],
-                data['salario'], data['idSupervisor'], foto_url, idEmpleados
-            )
-            cursor.execute(update_query, values)
-            connection.commit()
+        # Actualizar la información del empleado en la base de datos
+        connection = get_db_connection()
+        cursor = connection.cursor()
 
-            return jsonify({'message': 'Empleado actualizado con éxito'}), 200
+        query = """
+            UPDATE tb_empleados
+            SET nombre = %s, apellido = %s, fecha_nac = %s, ciudad = %s, 
+                direccion = %s, telefono = %s, idDepartamento = %s, 
+                idSupervisor = %s, salario = %s, foto = %s
+            WHERE idEmpleados = %s
+        """
+        cursor.execute(query, (
+            data['nombre'], data['apellido'], data['fecha_nac'], data['ciudad'], 
+            data['direccion'], data['telefono'], data['departamento'], 
+            data['supervisor'], data['salario'], foto_sql, idEmpleados
+        ))
+        connection.commit()
+
+        return jsonify({'message': 'Empleado actualizado exitosamente.'}), 200
 
     except Exception as e:
-        return jsonify({'error': f'Error al actualizar el empleado: {e}'}), 500
-
+        return jsonify({'error': f'Error al actualizar empleado: {e}'}), 500
     finally:
         if connection and connection.is_connected():
             connection.close()

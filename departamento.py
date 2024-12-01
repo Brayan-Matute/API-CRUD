@@ -23,6 +23,26 @@ def get_departamentos():
         if connection and connection.is_connected():
             connection.close()
 
+# Ruta GET para obtener un supervisor específico por id
+@departamento_bp.route('/departamentos/<int:idDepartamento>', methods=['GET'])
+def get_supervisor(idDepartamento):
+    try:
+        connection = get_db_connection()
+        if connection and connection.is_connected():
+            cursor = connection.cursor(dictionary=True)
+            query = "SELECT * FROM departamento WHERE idDepartamento = %s"
+            cursor.execute(query, (idDepartamento,))
+            supervisor = cursor.fetchone()
+
+            if supervisor:
+                return jsonify(supervisor), 200
+            else:
+                return jsonify({'error': 'Supervisor no encontrado'}), 404
+    except Exception as e:
+        return jsonify({'error': f'Error al obtener los datos: {e}'}), 500
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
 
 # Ruta POST para agregar un nuevo departamento
 @departamento_bp.route('/departamentos', methods=['POST'])
@@ -38,8 +58,6 @@ def add_departamento():
         connection = get_db_connection()
         if connection and connection.is_connected():
             cursor = connection.cursor()
-
-            # Insertar datos en la tabla `departamento`
             query = """
                 INSERT INTO departamento (nombre) 
                 VALUES (%s)
@@ -63,7 +81,6 @@ def update_departamento(idDepartamento):
     data = request.get_json()
     required_fields = ['nombre']
 
-    # Verificar que los datos requeridos estén presentes
     if not all(field in data and data[field] for field in required_fields):
         return jsonify({'error': 'Faltan datos obligatorios'}), 400
 
@@ -71,8 +88,6 @@ def update_departamento(idDepartamento):
         connection = get_db_connection()
         if connection and connection.is_connected():
             cursor = connection.cursor()
-
-            # Verificar si el departamento existe
             check_query = "SELECT * FROM departamento WHERE idDepartamento = %s"
             cursor.execute(check_query, (idDepartamento,))
             departamento = cursor.fetchone()
@@ -80,7 +95,6 @@ def update_departamento(idDepartamento):
             if not departamento:
                 return jsonify({'error': f'El departamento con id {idDepartamento} no existe'}), 404
 
-            # Actualizar el departamento
             update_query = "UPDATE departamento SET nombre = %s WHERE idDepartamento = %s"
             cursor.execute(update_query, (data['nombre'], idDepartamento))
             connection.commit()
@@ -102,8 +116,6 @@ def delete_departamento(idDepartamento):
         connection = get_db_connection()
         if connection and connection.is_connected():
             cursor = connection.cursor()
-
-            # Verificar si el departamento existe
             check_query = "SELECT * FROM departamento WHERE idDepartamento = %s"
             cursor.execute(check_query, (idDepartamento,))
             departamento = cursor.fetchone()
@@ -111,7 +123,6 @@ def delete_departamento(idDepartamento):
             if not departamento:
                 return jsonify({'error': f'El departamento con id {idDepartamento} no existe'}), 404
 
-            # Eliminar el departamento
             delete_query = "DELETE FROM departamento WHERE idDepartamento = %s"
             cursor.execute(delete_query, (idDepartamento,))
             connection.commit()
